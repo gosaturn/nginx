@@ -17,7 +17,25 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
     ngx_str_t type = ngx_string("text/plain");
     ngx_str_t response = ngx_string("Hello Gosaturn! Go on Fighting!");
     //ngx_write_stdout("test!!!!!!!");
-    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, r->headers);
+    //ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, r->headers);
+    /*
+    * 遍历header中的内容
+    * */
+    ngx_list_part_t* part = &r->headers_in.headers.part; //headers_in中的headers是ngx_list_t类型，其中part指向数组列表中的第一个数组 add by gosaturn
+    ngx_table_elt_t* header = part->elts; //数组的第一个元素, header里面存的是key-value类型
+    ngx_uint_t i = 0;
+    for (i = 0; /*void*/; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+            part = part->next;
+            header = part->elts;
+            i = 0;
+        }
+        printf("list element: %s, %s\n", header[i].key.data, header[i].value.data);
+    }
+
     //响应头部
     r->headers_out.status = NGX_HTTP_OK;
     r->headers_out.content_length_n = response.len;
