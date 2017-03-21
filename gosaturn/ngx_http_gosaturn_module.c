@@ -33,7 +33,10 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
             header = part->elts;
             i = 0;
         }
-        printf("list element: %s, %s\n", header[i].key.data, header[i].value.data);
+        //printf("list element: %s, %s\n", header[i].key.data, header[i].value.data);
+        //不知道怎么打出来，只好先用ngx_log_error
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_key=%s;", header[i].key.data);
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_value=%s;", header[i].value.data);
     }
 
     //响应头部
