@@ -24,6 +24,9 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
     ngx_list_part_t* part = &r->headers_in.headers.part; //headers_in中的headers是ngx_list_t类型，其中part指向数组列表中的第一个数组 add by gosaturn
     ngx_table_elt_t* header = part->elts; //数组的第一个元素, header里面存的是key-value类型
     ngx_uint_t i = 0;
+    ngx_uint_t is_connection_upgrade = 0;
+    ngx_uint_t is_upgrade_ws = 0;
+    //ngx_str_t ws_sec_key;
     for (i = 0; /*void*/; i++) {
         if (i >= part->nelts) {
             if (part->next == NULL) {
@@ -37,10 +40,36 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
         //不知道怎么打出来，只好先用ngx_log_error
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_key=%s;", header[i].key.data);
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_value=%s;", header[i].value.data);
+        //据说hash=0表示不是合法的头部
+        if (0 == header[i].hash) {
+            continue;
+        }
+        if (0 == ngx_strcmp(header[i].key.data, "Connection")) {
+            if (0 == ngx_strcmp(header[i].value.data, "Upgrade")) {
+                is_connection_upgrade = 1;
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "websocket_header_key=%s;", header[i].key.data);
+            }
+        }
+        if (0 == ngx_strcmp(header[i].key.data, (u_char*) "Upgrade")) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "websocket_header_key=%s;", header[i].key.data);
+            if (0 == ngx_strcmp(header[i].value.data, (u_char*) "websocket")) {
+                is_upgrade_ws = 1;
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "websocket_header_value=%s;", header[i].value.data);
+            }
+        }
+        /*
+        if (0 == ngx_strcmp(header[i].key.data, "Sec-WebSocket-Key")) {
+            ws_sec_key.data = &header[i].value.data;
+        }
+        */
     }
-
     //响应头部
     r->headers_out.status = NGX_HTTP_OK;
+    // 是websocket header
+    //if (1 == is_connection_upgrade && 1 == is_upgrade_ws && (len(ws_sec_key) > 0)) {
+    if (1 == is_connection_upgrade && 1 == is_upgrade_ws) {
+        r->headers_out.status = NGX_HTTP_SWITCHING_PROTOCOLS;
+    }
     r->headers_out.content_length_n = response.len;
     r->headers_out.content_type = type;
     //发送http头部
