@@ -27,6 +27,9 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
     ngx_uint_t is_connection_upgrade = 0;
     ngx_uint_t is_upgrade_ws = 0;
     //ngx_str_t ws_sec_key;
+    ngx_str_t ws_prefix = ngx_string("258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    //ngx_str_set(ws_prefix, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    ngx_uint_t ws_key_len = 0;
     for (i = 0; /*void*/; i++) {
         if (i >= part->nelts) {
             if (part->next == NULL) {
@@ -38,8 +41,8 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
         }
         //printf("list element: %s, %s\n", header[i].key.data, header[i].value.data);
         //不知道怎么打出来，只好先用ngx_log_error
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_key=%s;", header[i].key.data);
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_value=%s;", header[i].value.data);
+        //ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_key=%s;", header[i].key.data);
+        //ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_value=%s;", header[i].value.data);
         //据说hash=0表示不是合法的头部
         if (0 == header[i].hash) {
             continue;
@@ -57,17 +60,53 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "websocket_header_value=%s;", header[i].value.data);
             }
         }
-        /*
-        if (0 == ngx_strcmp(header[i].key.data, "Sec-WebSocket-Key")) {
-            ws_sec_key.data = &header[i].value.data;
+        if (0 == ngx_strcmp(header[i].key.data, "Sec-WebSocket-Key") && header[i].value.len > 0) {
+            //ws_sec_key.data = header[i].value.data;
+            //ngx_str_set(ws_sec_key, header[i].value.data);
+            ws_key_len = sizeof(ws_prefix) +  header[i].value.len -1;
+            /*
+            ngx_buf_t *tmp_b = ngx_create_temp_buf(r->pool, ws_key_len);
+            = ngx_create_temp_buf(r->pool, ws_key_len);
+            if (NULL == tmp_b) {
+                return NGX_ERROR;
+            }
+            ngx_memcpy(tmp_b->pos, header[i].value.data, header[i].value.len);
+            tmp_b->last = tmp_b->pos + header[i].value.len;
+            */
+            r->headers_out.headers = *ngx_list_create(r->pool, 1, sizeof(ngx_table_elt_t));
+            if (NULL == &r->headers_out.headers) {
+                return NGX_ERROR;
+            }
+            ngx_table_elt_t* out_header = ngx_list_push(&r->headers_out.headers);
+            if (NULL == out_header) {
+                return NGX_ERROR;
+            }
+            out_header->hash = r->header_hash;
+            out_header->key.len = header[i].key.len;
+            out_header->value.len = ws_key_len;
+            out_header->key.data = header[i].key.data; //这个应该是直接指向header[i].key.data所在的地址，不需要重新分配内存
+            out_header->value.data = ngx_pnalloc(r->pool, ws_key_len); //申请一块内存，用来存value
+            if (NULL == out_header->value.data) {
+                return NGX_ERROR;
+            }
+            ngx_memcpy(out_header->value.data, header[i].value.data, header[i].value.len);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.ws01=%s;", out_header->value.data);
+            ngx_memcpy(out_header->value.data + header[i].value.len, ws_prefix.data, ws_prefix.len);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.ws02=%s;", out_header->value.data);
+            /*
+             这是错误的用法。。。
+            ngx_list_part_t* part = &r->headers_out.headers.part;
+            ngx_table_elt_t* out_header = (ngx_table_elt_t*) part->elts;
+            out_header[0].key = {ngx_string("gosaturn_test")};
+            out_header[0].value = {ngx_string("test")};
+            */
         }
-        */
     }
     //响应头部
     r->headers_out.status = NGX_HTTP_OK;
     // 是websocket header
     //if (1 == is_connection_upgrade && 1 == is_upgrade_ws && (len(ws_sec_key) > 0)) {
-    if (1 == is_connection_upgrade && 1 == is_upgrade_ws) {
+    if (1 == is_connection_upgrade && 1 == is_upgrade_ws && ws_key_len > 0) {
         r->headers_out.status = NGX_HTTP_SWITCHING_PROTOCOLS;
     }
     r->headers_out.content_length_n = response.len;
