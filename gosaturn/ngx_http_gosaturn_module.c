@@ -28,7 +28,6 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
     ngx_uint_t is_upgrade_ws = 0;
     //ngx_str_t ws_sec_key;
     ngx_str_t ws_prefix = ngx_string("258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-    //ngx_str_set(ws_prefix, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
     ngx_uint_t ws_key_len = 0;
     for (i = 0; /*void*/; i++) {
         if (i >= part->nelts) {
@@ -64,15 +63,17 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
             //ws_sec_key.data = header[i].value.data;
             //ngx_str_set(ws_sec_key, header[i].value.data);
             ws_key_len = sizeof(ws_prefix) +  header[i].value.len -1;
-            /*
-            ngx_buf_t *tmp_b = ngx_create_temp_buf(r->pool, ws_key_len);
-            = ngx_create_temp_buf(r->pool, ws_key_len);
-            if (NULL == tmp_b) {
+            ngx_str_t ws_value_before_encode;
+            ws_value_before_encode.len = ws_key_len;
+            ws_value_before_encode.data = ngx_pnalloc(r->pool, ws_key_len);
+            if (NULL == ws_value_before_encode.data) {
                 return NGX_ERROR;
             }
-            ngx_memcpy(tmp_b->pos, header[i].value.data, header[i].value.len);
-            tmp_b->last = tmp_b->pos + header[i].value.len;
-            */
+            ngx_memcpy(ws_value_before_encode.data, header[i].value.data, header[i].value.len);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_value_before_encode.data01=%s;", ws_value_before_encode.data);
+            ngx_memcpy(ws_value_before_encode.data + header[i].value.len, ws_prefix.data, ws_prefix.len);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_value_before_encode.data02=%s;", ws_value_before_encode.data);
+
             r->headers_out.headers = *ngx_list_create(r->pool, 1, sizeof(ngx_table_elt_t));
             if (NULL == &r->headers_out.headers) {
                 return NGX_ERROR;
@@ -83,22 +84,19 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
             }
             out_header->hash = r->header_hash;
             out_header->key.len = header[i].key.len;
-            out_header->value.len = ws_key_len;
+            out_header->value.len = ngx_base64_encoded_length(ws_key_len);
             out_header->key.data = header[i].key.data; //这个应该是直接指向header[i].key.data所在的地址，不需要重新分配内存
-            out_header->value.data = ngx_pnalloc(r->pool, ws_key_len); //申请一块内存，用来存value
+            out_header->value.data = ngx_pnalloc(r->pool, out_header->value.len); //申请一块内存，用来存value
             if (NULL == out_header->value.data) {
                 return NGX_ERROR;
             }
+            ngx_encode_base64(&out_header->value, &ws_value_before_encode);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.data=%s;", out_header->value.data);
+            /*
             ngx_memcpy(out_header->value.data, header[i].value.data, header[i].value.len);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.ws01=%s;", out_header->value.data);
             ngx_memcpy(out_header->value.data + header[i].value.len, ws_prefix.data, ws_prefix.len);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.ws02=%s;", out_header->value.data);
-            /*
-             这是错误的用法。。。
-            ngx_list_part_t* part = &r->headers_out.headers.part;
-            ngx_table_elt_t* out_header = (ngx_table_elt_t*) part->elts;
-            out_header[0].key = {ngx_string("gosaturn_test")};
-            out_header[0].value = {ngx_string("test")};
             */
         }
     }
