@@ -74,10 +74,13 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
             ngx_memcpy(ws_value_before_encode.data + header[i].value.len, ws_prefix.data, ws_prefix.len);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_value_before_encode.data02=%s;", ws_value_before_encode.data);
 
+            /*
+             * r->headers_out.headers不需要单独分配内存
             r->headers_out.headers = *ngx_list_create(r->pool, 1, sizeof(ngx_table_elt_t));
             if (NULL == &r->headers_out.headers) {
                 return NGX_ERROR;
             }
+            */
             ngx_table_elt_t* out_header = ngx_list_push(&r->headers_out.headers);
             if (NULL == out_header) {
                 return NGX_ERROR;
@@ -92,6 +95,7 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
             }
             ngx_encode_base64(&out_header->value, &ws_value_before_encode);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.data=%s;", out_header->value.data);
+            //r->headers_out.headers.last = &r->headers_out.headers.part;
             /*
             ngx_memcpy(out_header->value.data, header[i].value.data, header[i].value.len);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.ws01=%s;", out_header->value.data);
