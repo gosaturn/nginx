@@ -27,7 +27,9 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
     ngx_uint_t is_connection_upgrade = 0;
     ngx_uint_t is_upgrade_ws = 0;
     //ngx_str_t ws_sec_key;
-    ngx_str_t ws_prefix = ngx_string("258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    //ngx_str_t ws_prefix = ngx_string("258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    ngx_str_t ws_prefix;
+    ngx_str_set(&ws_prefix, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
     ngx_uint_t ws_key_len = 0;
     for (i = 0; /*void*/; i++) {
         if (i >= part->nelts) {
@@ -62,7 +64,7 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
         if (0 == ngx_strcmp(header[i].key.data, "Sec-WebSocket-Key") && header[i].value.len > 0) {
             //ws_sec_key.data = header[i].value.data;
             //ngx_str_set(ws_sec_key, header[i].value.data);
-            ws_key_len = sizeof(ws_prefix) +  header[i].value.len -1;
+            ws_key_len = sizeof(ws_prefix) +  header[i].value.len;
             ngx_str_t ws_value_before_encode;
             ws_value_before_encode.len = ws_key_len;
             ws_value_before_encode.data = ngx_pnalloc(r->pool, ws_key_len);
@@ -86,22 +88,26 @@ static ngx_int_t ngx_http_gosaturn_handler(ngx_http_request_t *r)
                 return NGX_ERROR;
             }
             out_header->hash = r->header_hash;
-            out_header->key.len = header[i].key.len;
+            //out_header->key.len = header[i].key.len;
+            //out_header->key.data = header[i].key.data; //这个应该是直接指向header[i].key.data所在的地址，不需要重新分配内存
+            ngx_str_set(&out_header->key, "Sec-WebSocket-Accept");
             out_header->value.len = ngx_base64_encoded_length(ws_key_len);
-            out_header->key.data = header[i].key.data; //这个应该是直接指向header[i].key.data所在的地址，不需要重新分配内存
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.data->len=%d", out_header->value.len);
             out_header->value.data = ngx_pnalloc(r->pool, out_header->value.len); //申请一块内存，用来存value
             if (NULL == out_header->value.data) {
                 return NGX_ERROR;
             }
             ngx_encode_base64(&out_header->value, &ws_value_before_encode);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.data=%s;", out_header->value.data);
+            //Upgrade
+            out_header = ngx_list_push(&r->headers_out.headers);
+            if (NULL == out_header) {
+                return NGX_ERROR;
+            }
+            //out_header->hash = r->header_hash;
+            ngx_str_set(&out_header->key, "Upgrade");
+            ngx_str_set(&out_header->value, "websocket");
             //r->headers_out.headers.last = &r->headers_out.headers.part;
-            /*
-            ngx_memcpy(out_header->value.data, header[i].value.data, header[i].value.len);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.ws01=%s;", out_header->value.data);
-            ngx_memcpy(out_header->value.data + header[i].value.len, ws_prefix.data, ws_prefix.len);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.ws02=%s;", out_header->value.data);
-            */
         }
     }
     //响应头部
