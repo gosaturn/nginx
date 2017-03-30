@@ -4,6 +4,52 @@
 #include <ngx_log.h>
 #include <ngx_sha1.h>
 #include <assert.h>
+const ngx_str_t LCS_HEADER_SEC_WEBSOCKET_KEY = ngx_string("Sec-WebSocket-Key");
+const ngx_str_t LCS_HEADER_SEC_WEBSOCKET_ACCEPT = ngx_string("Sec-WebSocket-Accept");
+const ngx_str_t LCS_HEADER_UPGRADE = ngx_string("Upgrade");
+const ngx_str_t LCS_WEBSOCKET = ngx_string("websocket");
+const ngx_str_t LCS_HTTP_STATUS_101 = ngx_string("101 Switching Protocols");
+// 设置http header_out的headers
+ngx_table_elt_t * lcs_add_response_header(ngx_http_request_t *r, const ngx_str_t *header_name, const ngx_str_t *header_value) {
+    ngx_table_elt_t *h = ngx_list_push(&r->headers_out.headers);
+    if (NULL == h) {
+        return NULL;
+    }
+    h->hash = 1;
+    h->key.len = header_name->len;
+    h->key.data = header_name->data;
+    if(header_value) {
+        h->value.len = header_value->len;
+        h->value.data = header_value->data;
+    } else {
+        h->value.len = 0;
+        h->value.data = NULL;
+    }
+    return h;
+}
+
+ngx_str_t *lcs_get_header_value(ngx_http_request_t *r, ngx_str_t header_name) {
+    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "lcs_get_header_value01");
+    ngx_uint_t i;
+    ngx_list_part_t *part = &r->headers_in.headers.part;
+    ngx_table_elt_t *header = part->elts;
+    
+    for (i = 0; /* void */; i++) {
+        if (i >= part->nelts) {
+            if (NULL == part->next) {
+                break;
+            }
+            part = part->next;
+            header = part->elts;
+            i = 0;
+        }
+        if (header[i].key.len == header_name.len && ngx_strncasecmp(header[i].key.data, header_name.data, header[i].key.len) == 0) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "lcs_get_header_value02");
+            return &header[i].value;
+        }
+    }
+    return NULL;
+}
 
 static ngx_int_t ngx_http_lcs_handler(ngx_http_request_t *r)
 {
@@ -57,24 +103,28 @@ static ngx_int_t ngx_http_lcs_handler(ngx_http_request_t *r)
             }
         }
         if (0 == ngx_strcmp(header[i].key.data, "Sec-WebSocket-Key") && header[i].value.len > 0) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "test01");
             ngx_sha1_t sha1;
             u_char buf_sha1[21];
             u_char buf[255];
             ngx_str_t ws_accept_key; //base64加密后的值
             ngx_str_t sha1_str;
+            ngx_str_t *ws_key;
             ws_accept_key.data = buf;
             ws_key_len = sizeof(ws_prefix) +  header[i].value.len;
             
-            
-            //ngx_str_t *ws_key = &header[i].value;
-            //ngx_sha1_init(&sha1);
-            //ngx_sha1_update(&sha1, ws_key->data, ws_key->len); 
-            ngx_sha1_update(&sha1, &header[i].value.data, header[i].value.len);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_accept_key01=%p", &sha1);
+            if (NULL == (ws_key = lcs_get_header_value(r, LCS_HEADER_SEC_WEBSOCKET_KEY))) {
+                r->headers_out.status = NGX_HTTP_BAD_REQUEST;
+            }
+
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "test02");
+            ngx_sha1_init(&sha1);
+            ngx_sha1_update(&sha1, ws_key->data, ws_key->len);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_accept_key01=%s", ws_key->data);
             ngx_sha1_update(&sha1, ws_prefix.data, ws_prefix.len);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_accept_key02=%p", &sha1);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_accept_key02=%s", ws_prefix.data);
             ngx_sha1_final(buf_sha1, &sha1);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_accept_key03=%p", &sha1);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_accept_key03=%s", buf_sha1);
             sha1_str.len = 20;
             sha1_str.data = buf_sha1;
             ws_accept_key.len = ngx_base64_encoded_length(sha1_str.len);
@@ -82,44 +132,17 @@ static ngx_int_t ngx_http_lcs_handler(ngx_http_request_t *r)
             ngx_encode_base64(&ws_accept_key, &sha1_str);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_accept_key04=%s", ws_accept_key.data);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ws_accept_key05=%p", &sha1_str);
-            ngx_table_elt_t* out_header = ngx_list_push(&r->headers_out.headers);
-            if (NULL == out_header) {
-                return NGX_ERROR;
-            }
-            out_header->hash = r->header_hash;
-            //out_header->key.len = header[i].key.len;
-            //out_header->key.data = header[i].key.data; //这个应该是直接指向header[i].key.data所在的地址，不需要重新分配内存
-            ngx_str_set(&out_header->key, "Sec-WebSocket-Accept");
-            out_header->value.len = ws_accept_key.len;
-            out_header->value.data = ws_accept_key.data;
-            //out_header->value.len = ngx_base64_encoded_length(ws_key_len);
-            //out_header->value.len = ngx_base64_encoded_length(sha1_str.len);
-            //ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.data->len=%d", out_header->value.len);
-            /*
-            out_header->value.data = ngx_pnalloc(r->pool, out_header->value.len); //申请一块内存，用来存value
-            if (NULL == out_header->value.data) {
-                return NGX_ERROR;
-            }
-            //ngx_encode_base64(&out_header->value, &ws_value_before_encode);
-            ngx_encode_base64(&out_header->value, &sha1_str);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "header_out.data=%s;", out_header->value.data);
-            */
-            //Upgrade
-            out_header = ngx_list_push(&r->headers_out.headers);
-            if (NULL == out_header) {
-                return NGX_ERROR;
-            }
-            //out_header->hash = r->header_hash;
-            ngx_str_set(&out_header->key, "Upgrade");
-            ngx_str_set(&out_header->value, "websocket");
-            //r->headers_out.headers.last = &r->headers_out.headers.part;
+            lcs_add_response_header(r, &LCS_HEADER_SEC_WEBSOCKET_ACCEPT, &ws_accept_key);
+            lcs_add_response_header(r, &LCS_HEADER_UPGRADE, &LCS_WEBSOCKET);
         }
     }
     //响应头部
     r->headers_out.status = NGX_HTTP_OK;
     // 是websocket header
     if (1 == is_connection_upgrade && 1 == is_upgrade_ws && ws_key_len > 0) {
+        r->headers_out.status_line = LCS_HTTP_STATUS_101;
         r->headers_out.status = NGX_HTTP_SWITCHING_PROTOCOLS;
+        r->keepalive = 0;
     }
     r->headers_out.content_length_n = response.len;
     r->headers_out.content_type = type;
