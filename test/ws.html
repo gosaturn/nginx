@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>websocket</title>
+</head>
+<body>
+<h1>gosaturn test websocket</h1>
+
+<script type="text/javascript">
+    var ws = new WebSocket("ws://10.3.23.40:9129/gosaturn");
+    //var ws = new WebSocket("ws://10.3.23.40:9129/sub?id=1234");
+
+    var msg = '';
+
+    for (i = 0; i < 15; i++) {
+        msg += 'hello, gosaturn!';
+    }
+
+    ws.onopen = function () {
+        console.log('connected');
+        setTimeout(function () {
+            ws.send(msg);
+        }, 2000);
+    };
+
+    ws.onmessage = function (e) {
+        console.log(e.data);
+    }
+
+    ws.onclose = function (e) {
+        console.log(e);
+    }
+
+    ws.onerror = function (e) {
+        console.log(e);
+    };
+
+</script>
+</body>
+</html>
